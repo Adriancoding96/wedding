@@ -1,0 +1,30 @@
+﻿@import "tailwindcss";
+
+@theme {
+  /* Wedding Palette */
+  --color-blush:         #E69E93;
+  --color-peach:         #E78D5A;
+  --color-terracotta:    #BF4E2E;
+  --color-burnt-sienna:  #A74A23;
+  --color-olive-gold:    #908A32;
+  --color-forest-green:  #1E4035;
+  --color-burgundy:      #780918;
+  --color-cream:         #FFF1BD;
+
+  /* Typography */
+  --font-serif: 'Cormorant Garamond', Georgia, serif;
+  --font-sans:  'Inter', system-ui, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-sans);
+  background-color: #1E4035;
+  color: #FFF1BD;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+}
