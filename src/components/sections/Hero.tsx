@@ -12,10 +12,14 @@ export default function Hero() {
       id="hero"
       style={{ minHeight: '100svh', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
     >
-      {/* Background placeholder */}
-      <div style={{ position: 'absolute', inset: 0, backgroundColor: '#0e2620' }} />
+      {/* Background image */}
+      <img
+        src={`${import.meta.env.BASE_URL}images/hero.png`}
+        alt="Achill Island, County Mayo"
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center 40%' }}
+      />
       {/* Overlay */}
-      <div style={{ position: 'absolute', inset: 0, backgroundColor: '#1E4035', opacity: 0.75 }} />
+      <div style={{ position: 'absolute', inset: 0, backgroundColor: '#1E4035', opacity: 0.60 }} />
 
       {/* Content */}
       <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', padding: '2rem 1.5rem', maxWidth: 680 }}>
@@ -23,10 +27,10 @@ export default function Hero() {
         <div style={{ width: 60, height: 1, backgroundColor: '#FFF1BD', opacity: 0.5, margin: '0 auto 2rem' }} />
 
         <h1 style={{
-          fontFamily: 'var(--font-serif)',
+          fontFamily: 'var(--font-script)',
           color: '#FFF1BD',
           fontSize: 'clamp(2.8rem, 8vw, 5.5rem)',
-          fontWeight: 300,
+          fontWeight: 400,
           letterSpacing: '0.04em',
           lineHeight: 1.1,
           margin: '0 0 1rem',
@@ -34,7 +38,7 @@ export default function Hero() {
           Connie &amp; Adrian
         </h1>
 
-        <p style={{ color: '#FFF1BD', opacity: 0.85, fontSize: '0.85rem', letterSpacing: '0.25em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
+        <p style={{ color: '#FFF1BD', opacity: 0.85, fontSize: '1.05rem', letterSpacing: '0.25em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
           19 &middot; June &middot; 2027
         </p>
 
@@ -58,7 +62,7 @@ export default function Hero() {
           </div>
         ) : (
           <p style={{ fontFamily: 'var(--font-serif)', color: '#FFF1BD', fontSize: '1.4rem', fontStyle: 'italic' }}>
-            Today's the day! 🎉
+            Today's the day!
           </p>
         )}
 

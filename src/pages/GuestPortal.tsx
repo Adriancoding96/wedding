@@ -41,7 +41,7 @@ function RSVPForm() {
     return (
       <div style={{ textAlign: 'center', padding: '2rem' }}>
         <p style={{ fontFamily: 'var(--font-serif)', color: '#FFF1BD', fontSize: '1.4rem', fontStyle: 'italic' }}>
-          We've received your RSVP — thank you! 🎉
+          We've received your RSVP — thank you!
         </p>
       </div>
     )
@@ -60,7 +60,7 @@ function RSVPForm() {
       <div>
         <label style={{ color: '#FFF1BD', opacity: 0.7, fontSize: '0.75rem', letterSpacing: '0.1em', textTransform: 'uppercase', display: 'block', marginBottom: '0.6rem' }}>Will you be attending? *</label>
         <div style={{ display: 'flex', gap: '1.5rem' }}>
-          {['Yes, I\'ll be there! 🎉', 'Sadly can\'t make it'].map((label, i) => (
+          {['Yes, I\'ll be there!', 'Sadly can\'t make it'].map((label, i) => (
             <label key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: '#FFF1BD', fontSize: '0.9rem' }}>
               <input type="radio" name="attending" value={i === 0 ? 'yes' : 'no'} required style={{ accentColor: '#780918' }} />
               {label}
@@ -73,7 +73,7 @@ function RSVPForm() {
         <textarea name="dietary" rows={3} placeholder="Any allergies or dietary needs?" style={{ ...inputStyle, resize: 'vertical' }} />
       </div>
       <div>
-        <label style={{ color: '#FFF1BD', opacity: 0.7, fontSize: '0.75rem', letterSpacing: '0.1em', textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem' }}>🎵 Song Request</label>
+        <label style={{ color: '#FFF1BD', opacity: 0.7, fontSize: '0.75rem', letterSpacing: '0.1em', textTransform: 'uppercase', display: 'block', marginBottom: '0.4rem' }}>Song Request</label>
         <input type="text" name="song" placeholder="What song will get you on the dance floor?" style={inputStyle} />
       </div>
       {status === 'error' && (

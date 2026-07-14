@@ -1,9 +1,9 @@
 const TIMELINE = [
   { time: '2:00 PM', event: 'Guests Arrive',       desc: 'Welcome drinks and a chance to soak in the surroundings.' },
-  { time: '3:00 PM', event: 'Ceremony',             desc: 'The moment we\'ve been waiting for.' },
-  { time: '4:30 PM', event: 'Drinks Reception',     desc: 'Champagne, canapés and golden-hour views.' },
+  { time: '3:00 PM', event: 'Ceremony',             desc: 'Two silly billys unite.' },
+  { time: '4:30 PM', event: 'Drinks Reception',     desc: 'Bubbly, Guinness and good company.' },
   { time: '7:00 PM', event: 'Dinner',               desc: 'A sit-down celebration dinner with family and friends.' },
-  { time: '9:00 PM', event: 'Dancing',              desc: 'The night is young — let\'s dance until we can\'t anymore.' },
+  { time: '9:00 PM', event: 'Party Time',           desc: 'The dancefloor is open — see you out there.' },
 ]
 
 export default function Schedule() {
@@ -12,7 +12,7 @@ export default function Schedule() {
       <div style={{ maxWidth: 700, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '3.5rem' }}>
           <p style={{ color: '#908A32', fontSize: '0.75rem', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>19 June 2027</p>
-          <h2 style={{ fontFamily: 'var(--font-serif)', color: '#FFF1BD', fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 300, margin: 0 }}>The Day</h2>
+          <h2 style={{ fontFamily: 'var(--font-script)', color: '#FFF1BD', fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 400, margin: 0 }}>The Day</h2>
         </div>
 
         <div style={{ position: 'relative', paddingLeft: '2.5rem' }}>

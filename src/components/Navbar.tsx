@@ -30,7 +30,7 @@ export default function Navbar() {
     >
       <div className="max-w-6xl mx-auto px-6 flex items-center justify-between h-16">
         {/* Logo */}
-        <span style={{ fontFamily: 'var(--font-serif)', color: '#FFF1BD', fontSize: '1.2rem', letterSpacing: '0.05em' }}>
+        <span style={{ fontFamily: 'var(--font-script)', color: '#FFF1BD', fontSize: '1.5rem', letterSpacing: '0.02em' }}>
           C &amp; A
         </span>
 

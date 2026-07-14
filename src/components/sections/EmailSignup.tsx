@@ -26,7 +26,7 @@ export default function EmailSignup() {
     <section id="updates" style={{ backgroundColor: '#E69E93', padding: 'clamp(4rem, 8vw, 7rem) 1.5rem' }}>
       <div style={{ maxWidth: 540, margin: '0 auto', textAlign: 'center' }}>
         <p style={{ color: '#1E4035', fontSize: '0.75rem', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '0.75rem', opacity: 0.7 }}>Stay in the loop</p>
-        <h2 style={{ fontFamily: 'var(--font-serif)', color: '#1E4035', fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 300, margin: '0 0 0.75rem' }}>
+        <h2 style={{ fontFamily: 'var(--font-script)', color: '#1E4035', fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 400, margin: '0 0 0.75rem' }}>
           Stay Updated
         </h2>
         <p style={{ color: '#1E4035', opacity: 0.75, lineHeight: 1.7, marginBottom: '2rem' }}>
@@ -35,7 +35,7 @@ export default function EmailSignup() {
 
         {status === 'success' ? (
           <p style={{ color: '#1E4035', fontFamily: 'var(--font-serif)', fontSize: '1.2rem', fontStyle: 'italic' }}>
-            Thank you! We'll be in touch. 💌
+            Thank you! We'll be in touch.
           </p>
         ) : (
           <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', justifyContent: 'center' }}>
