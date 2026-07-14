@@ -8,6 +8,7 @@ const NAV_LINKS = [
   { href: '#schedule',  label: 'Schedule' },
   { href: '#faq',       label: 'FAQ' },
   { href: '#updates',   label: 'Updates' },
+  { href: '#game',      label: 'Game' },
 ]
 
 export default function Navbar() {
