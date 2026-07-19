@@ -28,7 +28,7 @@ export const translations = {
     },
     location: {
       heading: 'Achill Island, Co. Mayo',
-      p1: "Achill Island is Ireland's largest island — a wild, windswept stretch of the Wild Atlantic Way, fringed by golden beaches, dramatic sea cliffs, and the towering slopes of Croaghaun and Slievemore. It's a place of breathtaking beauty and rugged romance.",
+      p1: "Achill Island is Ireland's largest island - a wild, windswept stretch of the Wild Atlantic Way, fringed by golden beaches, dramatic sea cliffs, and the towering slopes of Croaghaun and Slievemore. It's a place of breathtaking beauty and rugged romance.",
       p2: "We can't think of a more fitting backdrop for the beginning of our greatest adventure together.",
       tips: [
         {
@@ -59,11 +59,11 @@ export const translations = {
     },
     faq: {
       heading: 'FAQ',
-      body: "We'll be putting together answers to all your questions soon — everything from getting there to what to wear. Check back closer to the date, or sign up for updates below.",
+      body: "We'll be putting together answers to all your questions soon - everything from getting there to what to wear. For now, we just wanted to share our date and location with you so you can prepare for our special day. ",
     },
     emailSignup: {
       heading: 'Stay Updated',
-      body: 'Sign up to receive updates about our big day — from venue details to last-minute news.',
+      body: 'Sign up to receive updates about our big day - from venue details to last-minute news.',
       placeholder: 'your@email.com',
       button: 'Sign me up',
       success: "Thank you! We'll be in touch.",
