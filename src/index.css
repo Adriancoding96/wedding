@@ -1,6 +1,6 @@
 ﻿@import "tailwindcss";
 
-@theme {
+@theme #E69E93{
   /* Wedding Palette */
   --color-blush:         #E69E93;
   --color-peach:         #E78D5A;
@@ -15,6 +15,9 @@
   --font-serif:   'Cormorant Garamond', Georgia, serif;
   --font-script:  'Seaweed Script', cursive;
   --font-sans:    'Inter', system-ui, sans-serif;
+
+  /* Custom breakpoints */
+  --breakpoint-nav: 900px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

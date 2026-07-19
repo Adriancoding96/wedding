@@ -3,20 +3,23 @@ import type { FormEvent } from 'react'
 
 type Status = 'idle' | 'submitting' | 'success' | 'error'
 
+const FORMSPREE_URL = import.meta.env.VITE_FORMSPREE_URL as string
+
 export default function EmailSignup() {
   const [status, setStatus] = useState<Status>('idle')
+  const [email, setEmail] = useState('')
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setStatus('submitting')
-    const form = e.currentTarget
     try {
-      const res = await fetch('https://formspree.io/f/YOUR_FORM_ID_EMAIL', {
+      const res = await fetch(FORMSPREE_URL, {
         method: 'POST',
-        body: new FormData(form),
-        headers: { Accept: 'application/json' },
+        body: JSON.stringify({ email }),
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       })
       setStatus(res.ok ? 'success' : 'error')
+      if (res.ok) setEmail('')
     } catch {
       setStatus('error')
     }
@@ -44,6 +47,8 @@ export default function EmailSignup() {
               name="email"
               required
               placeholder="your@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
               style={{
                 flex: '1 1 220px',
                 padding: '0.75rem 1rem',

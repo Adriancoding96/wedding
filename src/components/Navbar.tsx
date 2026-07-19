@@ -1,19 +1,17 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
+import { useLanguage } from '../utils/LanguageContext'
+import { translations } from '../utils/translations'
 
-const NAV_LINKS = [
-  { href: '#our-story', label: 'Our Story' },
-  { href: '#gallery',   label: 'Gallery' },
-  { href: '#location',  label: 'Location' },
-  { href: '#schedule',  label: 'Schedule' },
-  { href: '#faq',       label: 'FAQ' },
-  { href: '#updates',   label: 'Updates' },
-  { href: '#game',      label: 'Game' },
-]
+function scrollToSection(id: string) {
+  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
+}
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const { lang } = useLanguage()
+  const t = translations[lang].navbar
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 80)
@@ -36,40 +34,42 @@ export default function Navbar() {
         </span>
 
         {/* Desktop links */}
-        <ul className="hidden md:flex items-center gap-8">
-          {NAV_LINKS.map(({ href, label }) => (
-            <li key={href}>
-              <a
-                href={href}
-                style={{ color: '#FFF1BD', fontSize: '0.8rem', letterSpacing: '0.12em', textTransform: 'uppercase' }}
+        <ul className="hidden nav:flex items-center gap-8">
+          {t.links.map(({ id, label }) => (
+            <li key={id}>
+              <button
+                onClick={() => scrollToSection(id)}
+                style={{ color: '#FFF1BD', fontSize: '0.8rem', letterSpacing: '0.12em', textTransform: 'uppercase', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
                 className="opacity-80 hover:opacity-100 transition-opacity"
               >
                 {label}
-              </a>
+              </button>
             </li>
           ))}
         </ul>
 
-        {/* Guest login */}
-        <Link
-          to="/guest"
-          className="hidden md:inline-block transition-colors"
-          style={{
-            border: '1px solid #FFF1BD',
-            color: '#FFF1BD',
-            padding: '0.35rem 1rem',
-            fontSize: '0.75rem',
-            letterSpacing: '0.1em',
-            textTransform: 'uppercase',
-            borderRadius: '2px',
-          }}
-        >
-          Guest Login
-        </Link>
+        {/* Desktop right: guest login */}
+        <div className="hidden nav:flex items-center gap-3">
+          <Link
+            to="/guest"
+            className="transition-colors"
+            style={{
+              border: '1px solid #FFF1BD',
+              color: '#FFF1BD',
+              padding: '0.35rem 1rem',
+              fontSize: '0.75rem',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              borderRadius: '2px',
+            }}
+          >
+            {t.guestLogin}
+          </Link>
+        </div>
 
         {/* Mobile hamburger */}
         <button
-          className="md:hidden flex flex-col gap-1.5 p-2"
+          className="nav:hidden flex flex-col gap-1.5 p-2"
           onClick={() => setMenuOpen(v => !v)}
           aria-label="Toggle menu"
         >
@@ -81,23 +81,22 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       {menuOpen && (
-        <div style={{ backgroundColor: '#1E4035', borderTop: '1px solid rgba(255,241,189,0.15)' }} className="md:hidden px-6 pb-4 pt-2 flex flex-col gap-4">
-          {NAV_LINKS.map(({ href, label }) => (
-            <a
-              key={href}
-              href={href}
-              onClick={() => setMenuOpen(false)}
-              style={{ color: '#FFF1BD', fontSize: '0.85rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}
+        <div style={{ backgroundColor: '#1E4035', borderTop: '1px solid rgba(255,241,189,0.15)' }} className="nav:hidden px-6 pb-4 pt-2 flex flex-col gap-4">
+          {t.links.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => { scrollToSection(id); setMenuOpen(false) }}
+              style={{ color: '#FFF1BD', fontSize: '0.85rem', letterSpacing: '0.1em', textTransform: 'uppercase', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
             >
               {label}
-            </a>
+            </button>
           ))}
           <Link
             to="/guest"
             onClick={() => setMenuOpen(false)}
             style={{ color: '#FFF1BD', fontSize: '0.85rem', letterSpacing: '0.1em', textTransform: 'uppercase' }}
           >
-            Guest Login
+            {t.guestLogin}
           </Link>
         </div>
       )}

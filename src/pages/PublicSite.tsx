@@ -7,7 +7,7 @@ import Location from '../components/sections/Location'
 import Schedule from '../components/sections/Schedule'
 import FAQ from '../components/sections/FAQ'
 import EmailSignup from '../components/sections/EmailSignup'
-import PintChase from '../components/sections/PintChase'
+// import PintChase from '../components/sections/PintChase'
 
 export default function PublicSite() {
   return (
@@ -21,7 +21,7 @@ export default function PublicSite() {
         <Schedule />
         <FAQ />
         <EmailSignup />
-        <PintChase />
+        {/* <PintChase /> */}
       </main>
       <Footer />
     </>

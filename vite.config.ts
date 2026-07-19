@@ -5,6 +5,7 @@ import tailwindcss from '@tailwindcss/vite'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: '/wedding/',
+  server: { host: true },
   build: {
     outDir: 'dist',
   },

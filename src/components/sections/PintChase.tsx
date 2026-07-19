@@ -1,329 +1,259 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 
-// ─── Grid ─────────────────────────────────────────────────────────────────────
-const CELL = 36, COLS = 19, ROWS = 13
-const W = COLS * CELL, H = ROWS * CELL
+// ─── Constants ────────────────────────────────────────────────────────────────
+const W = 560, H = 480
+const ALIEN_COLS = 10, ALIEN_ROWS = 5
+const ALIEN_SLOT_W = 50, ALIEN_SLOT_H = 38
+const ALIEN_GRID_LEFT = (W - ALIEN_COLS * ALIEN_SLOT_W) / 2   // = 30
+const ALIEN_GRID_TOP  = 52
+const PLAYER_W = 44, PLAYER_H = 28
+const PLAYER_Y = H - 48
+const PLAYER_SPEED       = 3.5
+const PLAYER_BULLET_SPD  = 10
+const ALIEN_BULLET_SPD   = 4
+const ALIEN_STEP_X       = 10
+const ALIEN_STEP_DOWN    = 22
 
-const MAZE: number[][] = [
-  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,1,1,0,0,0,1,1,0,0,0,1,1,0,0,1,0,1],
-  [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
-  [1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,1],
-  [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,1,0,0,0,0,0,0,0,0,0,0,0,1,0,0,1],
-  [1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,1],
-  [1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
-  [1,0,1,1,0,0,0,1,1,0,0,0,1,1,0,0,1,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-]
-
-const isOpen = (c: number, r: number) =>
-  c >= 0 && c < COLS && r >= 0 && r < ROWS && MAZE[r][c] === 0
-
-const TOTAL_PINTS = MAZE.flat().filter(v => v === 0).length
+// Seeded stars so they don't re-randomise each render
+const STARS = (() => {
+  const list: { x: number; y: number; r: number; a: number }[] = []
+  let s = 0xdeadbeef
+  const rand = () => { s = ((s * 1664525) + 1013904223) >>> 0; return s / 0xffffffff }
+  for (let i = 0; i < 90; i++)
+    list.push({ x: rand() * W, y: rand() * H, r: rand() * 1.4 + 0.4, a: rand() * 0.5 + 0.5 })
+  return list
+})()
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Ent {
-  c: number; r: number       // destination / current cell
-  fc: number; fr: number     // from cell
-  t: number                  // lerp 0→1
-  sp: number                 // speed (t per frame)
-  dc: number; dr: number     // active direction
-  qc: number; qr: number     // queued direction
-}
+interface Bullet    { x: number; y: number; player: boolean }
+interface Alien     { col: number; row: number; alive: boolean; type: number }
+interface Explosion { x: number; y: number; t: number }
 
 type Status = 'idle' | 'playing' | 'dying' | 'won' | 'over'
 
 interface GS {
-  player: Ent
-  ghosts: Ent[]
-  pints: Uint8Array
+  playerX: number
+  inputL: boolean
+  inputR: boolean
+  bullets: Bullet[]
+  aliens: Alien[]
+  explosions: Explosion[]
+  dirX: number          // fleet direction: +1 or -1
+  offsetX: number       // fleet horizontal drift from start
+  offsetY: number       // fleet vertical drift from start
+  moveTimer: number
+  moveInterval: number  // frames between fleet steps
+  fireTimer: number
+  fireCooldown: number  // player refire delay
   score: number
-  left: number
   lives: number
   status: Status
-  dT: number
   frame: number
   level: number
+  dT: number            // dying countdown
+  powerup: { x: number; y: number; timer: number } | null
+  powerupTimer: number   // frames remaining (300 = 5 s at 60 fps)
+  powerupSpawn: number   // countdown to next spawn attempt
 }
 
-function mkEnt(c: number, r: number, dc = 0, dr = 0, sp = 0.08): Ent {
-  return { c, r, fc: c, fr: r, t: 1, dc, dr, qc: dc, qr: dr, sp }
+// ─── Init ─────────────────────────────────────────────────────────────────────
+function initAliens(): Alien[] {
+  const out: Alien[] = []
+  for (let r = 0; r < ALIEN_ROWS; r++)
+    for (let c = 0; c < ALIEN_COLS; c++)
+      out.push({ col: c, row: r, alive: true, type: r < 2 ? 0 : r < 4 ? 1 : 2 })
+  return out
 }
 
 function initGame(level = 1): GS {
-  const gsp = 0.05 + (level - 1) * 0.005
-  const pints = new Uint8Array(COLS * ROWS)
-  MAZE.forEach((row, r) => row.forEach((v, c) => { if (v === 0) pints[r * COLS + c] = 1 }))
-  pints[1 * COLS + 1] = 0 // clear player start cell
   return {
-    player: mkEnt(1, 1, 1, 0, 0.085),
-    ghosts: [
-      mkEnt(9, 6,  1,  0, gsp),
-      mkEnt(9, 6, -1,  0, gsp),
-      mkEnt(9, 6,  0, -1, gsp),
-    ],
-    pints,
-    score: 0, left: TOTAL_PINTS - 1, lives: 3,
-    status: 'idle', dT: 0, frame: 0, level,
+    playerX: W / 2,
+    inputL: false, inputR: false,
+    bullets: [], aliens: initAliens(), explosions: [],
+    dirX: 1, offsetX: 0, offsetY: 0,
+    moveTimer: 0,
+    moveInterval: Math.max(6, 30 - (level - 1) * 4),
+    fireTimer: 0, fireCooldown: 0,
+    score: 0, lives: 3, status: 'idle',
+    frame: 0, level, dT: 0,
+    powerup: null, powerupTimer: 0, powerupSpawn: 480,
   }
 }
 
-// ─── Movement ─────────────────────────────────────────────────────────────────
-function advance(e: Ent): { e: Ent; justArrived: boolean } {
-  if (e.t < 1) {
-    const t = Math.min(1, e.t + e.sp)
-    return { e: { ...e, t }, justArrived: t >= 1 }
-  }
-  // Try queued direction
-  let nc = e.c + e.qc, nr = e.r + e.qr
-  if ((e.qc !== 0 || e.qr !== 0) && isOpen(nc, nr)) {
-    return { e: { ...e, c: nc, r: nr, fc: e.c, fr: e.r, dc: e.qc, dr: e.qr, t: 0 }, justArrived: false }
-  }
-  // Try current direction
-  nc = e.c + e.dc; nr = e.r + e.dr
-  if ((e.dc !== 0 || e.dr !== 0) && isOpen(nc, nr)) {
-    return { e: { ...e, c: nc, r: nr, fc: e.c, fr: e.r, t: 0 }, justArrived: false }
-  }
-  return { e, justArrived: false }
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+const alienCX = (s: GS, col: number) =>
+  ALIEN_GRID_LEFT + s.offsetX + col * ALIEN_SLOT_W + ALIEN_SLOT_W / 2
+const alienCY = (s: GS, row: number) =>
+  ALIEN_GRID_TOP  + s.offsetY + row * ALIEN_SLOT_H + ALIEN_SLOT_H / 2
 
-const DIRS4: [number, number][] = [[1,0],[-1,0],[0,1],[0,-1]]
-
-function ghostAI(g: Ent, player: Ent): Ent {
-  if (g.t < 1) return g
-  const valid = DIRS4.filter(([dc, dr]) =>
-    isOpen(g.c + dc, g.r + dr) && !(dc === -g.dc && dr === -g.dr)
-  )
-  if (valid.length === 0) return g
-  const chosen = Math.random() < 0.72
-    ? valid.reduce((best, d) => {
-        const bd = Math.abs(g.c + best[0] - player.c) + Math.abs(g.r + best[1] - player.r)
-        const dd = Math.abs(g.c + d[0] - player.c) + Math.abs(g.r + d[1] - player.r)
-        return dd < bd ? d : best
-      })
-    : valid[Math.floor(Math.random() * valid.length)]
-  return { ...g, qc: chosen[0], qr: chosen[1] }
-}
-
-const epx = (e: Ent) => (e.fc + (e.c - e.fc) * e.t) * CELL
-const epy = (e: Ent) => (e.fr + (e.r - e.fr) * e.t) * CELL
 
 // ─── Drawing ──────────────────────────────────────────────────────────────────
-function drawBg(ctx: CanvasRenderingContext2D) {
-  MAZE.forEach((row, r) => row.forEach((v, c) => {
-    if (v === 1) {
-      ctx.fillStyle = '#1E4035'
-      ctx.fillRect(c * CELL, r * CELL, CELL, CELL)
-      ctx.strokeStyle = 'rgba(144,138,50,0.2)'
-      ctx.lineWidth = 0.5
-      ctx.strokeRect(c * CELL + 1.5, r * CELL + 1.5, CELL - 3, CELL - 3)
-    } else {
-      ctx.fillStyle = '#0c1e14'
-      ctx.fillRect(c * CELL, r * CELL, CELL, CELL)
-    }
-  }))
-}
-
-function drawPints(ctx: CanvasRenderingContext2D, pints: Uint8Array) {
-  MAZE.forEach((row, r) => row.forEach((_, c) => {
-    if (!pints[r * COLS + c]) return
-    const cx = c * CELL + CELL / 2, cy = r * CELL + CELL / 2
-    const s = CELL * 0.34   // glass scale
-    const gh = s * 1.55     // glass height
-    const gt = s * 0.52     // glass top half-width
-    const gb = s * 0.4      // glass bottom half-width
-    const gTop = cy - gh * 0.52
-    const gBot = cy + gh * 0.48
-
-    // Glass body (slightly tapered — wider at top like a real pint)
-    ctx.fillStyle = '#0a0500'
-    ctx.beginPath()
-    ctx.moveTo(cx - gb, gBot)
-    ctx.lineTo(cx - gt, gTop)
-    ctx.lineTo(cx + gt, gTop)
-    ctx.lineTo(cx + gb, gBot)
-    ctx.closePath()
-    ctx.fill()
-
-    // Guinness body — very dark ruby/brown
-    const bodyGrad = ctx.createLinearGradient(cx - gt, gTop, cx + gt, gTop)
-    bodyGrad.addColorStop(0, '#1a0800')
-    bodyGrad.addColorStop(0.35, '#2d1005')
-    bodyGrad.addColorStop(0.65, '#1a0800')
-    bodyGrad.addColorStop(1, '#0a0300')
-    ctx.fillStyle = bodyGrad
-    const inset = s * 0.04
-    ctx.beginPath()
-    ctx.moveTo(cx - gb + inset, gBot - inset)
-    ctx.lineTo(cx - gt + inset, gTop + gh * 0.22)
-    ctx.lineTo(cx + gt - inset, gTop + gh * 0.22)
-    ctx.lineTo(cx + gb - inset, gBot - inset)
-    ctx.closePath()
-    ctx.fill()
-
-    // Settling layer — brown surge band just below foam
-    const surgeY = gTop + gh * 0.22
-    ctx.fillStyle = 'rgba(120,50,10,0.5)'
-    ctx.beginPath()
-    ctx.moveTo(cx - gt + inset, surgeY)
-    ctx.lineTo(cx + gt - inset, surgeY)
-    ctx.lineTo(cx + gt - inset, surgeY + gh * 0.08)
-    ctx.lineTo(cx - gt + inset, surgeY + gh * 0.08)
-    ctx.closePath()
-    ctx.fill()
-
-    // Foam head — creamy white with slight dome
-    const foamBot = gTop + gh * 0.22
-    const foamTop = gTop
-    const foamGrad = ctx.createLinearGradient(cx, foamTop, cx, foamBot)
-    foamGrad.addColorStop(0, '#fff8e8')
-    foamGrad.addColorStop(0.5, '#f0dfa0')
-    foamGrad.addColorStop(1, '#d4bc6a')
-    ctx.fillStyle = foamGrad
-    ctx.beginPath()
-    ctx.moveTo(cx - gt + inset, foamBot)
-    ctx.lineTo(cx - gt + inset, foamTop + s * 0.06)
-    ctx.quadraticCurveTo(cx, foamTop - s * 0.08, cx + gt - inset, foamTop + s * 0.06)
-    ctx.lineTo(cx + gt - inset, foamBot)
-    ctx.closePath()
-    ctx.fill()
-
-    // Foam bubble texture
-    ctx.fillStyle = 'rgba(255,252,235,0.6)'
-    for (const [bx, by, br] of [
-      [cx - s*0.12, foamTop + s*0.08, s*0.045],
-      [cx + s*0.08, foamTop + s*0.05, s*0.035],
-      [cx - s*0.02, foamTop + s*0.13, s*0.04],
-      [cx + s*0.18, foamTop + s*0.11, s*0.03],
-      [cx - s*0.2,  foamTop + s*0.12, s*0.03],
-    ] as [number,number,number][]) {
-      ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill()
-    }
-
-    // Glass highlight (left reflection)
-    ctx.fillStyle = 'rgba(255,255,255,0.1)'
-    ctx.beginPath()
-    ctx.moveTo(cx - gt + inset + s*0.04, gTop + gh*0.25)
-    ctx.lineTo(cx - gt + inset + s*0.12, gTop + gh*0.25)
-    ctx.lineTo(cx - gb + inset + s*0.1,  gBot - inset)
-    ctx.lineTo(cx - gb + inset + s*0.02, gBot - inset)
-    ctx.closePath()
-    ctx.fill()
-
-    // Glass outline
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)'
-    ctx.lineWidth = 0.6
-    ctx.beginPath()
-    ctx.moveTo(cx - gb, gBot)
-    ctx.lineTo(cx - gt, gTop)
-    ctx.moveTo(cx + gt, gTop)
-    ctx.lineTo(cx + gb, gBot)
-    ctx.stroke()
-  }))
-}
-
-function drawSheep(ctx: CanvasRenderingContext2D, e: Ent, frame: number) {
-  const x = epx(e), y = epy(e)
-  const cx = x + CELL / 2, cy = y + CELL / 2, s = CELL
-  const moving = e.t < 1 || (e.dc !== 0 || e.dr !== 0)
-  const swing = moving ? Math.sin(frame * 0.28) * s * 0.08 : 0
-
-  // Legs
-  ctx.strokeStyle = '#555'; ctx.lineWidth = s * 0.065; ctx.lineCap = 'round'
-  for (const [ox, dir] of [[-0.16, 1], [-0.05, -1], [0.05, 1], [0.16, -1]] as [number, number][]) {
-    ctx.beginPath()
-    ctx.moveTo(cx + ox * s, cy + s * 0.18)
-    ctx.lineTo(cx + ox * s + dir * swing, cy + s * 0.38)
-    ctx.stroke()
-  }
-
-  // Body
-  ctx.fillStyle = '#dedad2'
-  ctx.beginPath(); ctx.ellipse(cx, cy - s * 0.04, s * 0.33, s * 0.23, 0, 0, Math.PI * 2); ctx.fill()
-  // Wool puffs
-  ctx.fillStyle = '#f6f3ed'
-  const puffs: [number, number][] = [[0,-0.2],[0.18,-0.1],[0.25,0.06],[0.18,0.18],[0,0.22],[-0.18,0.18],[-0.25,0.06],[-0.18,-0.1]]
-  for (const [ox, oy] of puffs) {
-    ctx.beginPath(); ctx.arc(cx + ox * s, cy + oy * s, s * 0.14, 0, Math.PI * 2); ctx.fill()
-  }
-
-  // Head — offset in direction of travel
-  const hx = cx + e.dc * s * 0.33
-  const hy = cy + e.dr * s * 0.28 - (e.dr === 0 ? s * 0.26 : 0)
-
-  // Ears
-  ctx.fillStyle = '#f0c0a0'
-  ctx.beginPath(); ctx.ellipse(hx - s * 0.1, hy - s * 0.1, s * 0.055, s * 0.09, -0.4, 0, Math.PI * 2); ctx.fill()
-  ctx.beginPath(); ctx.ellipse(hx + s * 0.1, hy - s * 0.1, s * 0.055, s * 0.09,  0.4, 0, Math.PI * 2); ctx.fill()
-
-  // Head
-  ctx.fillStyle = '#28231e'
-  ctx.beginPath(); ctx.ellipse(hx, hy, s * 0.14, s * 0.16, 0, 0, Math.PI * 2); ctx.fill()
-
-  // Eyes
-  ctx.fillStyle = 'white'
-  ctx.beginPath(); ctx.arc(hx - s * 0.056, hy - s * 0.03, s * 0.042, 0, Math.PI * 2); ctx.fill()
-  ctx.beginPath(); ctx.arc(hx + s * 0.056, hy - s * 0.03, s * 0.042, 0, Math.PI * 2); ctx.fill()
-  ctx.fillStyle = '#111'
-  ctx.beginPath(); ctx.arc(hx - s * 0.048 + e.dc * s * 0.012, hy - s * 0.03 + e.dr * s * 0.012, s * 0.024, 0, Math.PI * 2); ctx.fill()
-  ctx.beginPath(); ctx.arc(hx + s * 0.063 + e.dc * s * 0.012, hy - s * 0.03 + e.dr * s * 0.012, s * 0.024, 0, Math.PI * 2); ctx.fill()
-}
-
-function drawHungover(ctx: CanvasRenderingContext2D, e: Ent, frame: number) {
-  const x = epx(e), y = epy(e)
-  const cx = x + CELL / 2, cy = y + CELL / 2, s = CELL
-  const r = s * 0.36, w = Math.sin(frame * 0.07) * 1.8
-
-  const grad = ctx.createRadialGradient(cx + w, cy - r * 0.15, r * 0.1, cx + w, cy, r * 1.1)
-  grad.addColorStop(0, '#b2e85a'); grad.addColorStop(1, '#4d8820')
-  ctx.fillStyle = grad
-
-  const by = cy + r * 0.88
-  ctx.beginPath()
-  ctx.arc(cx + w, cy - r * 0.08, r, Math.PI, 0)
-  ctx.quadraticCurveTo(cx + r * 0.75 + w, by + r * 0.32, cx + r * 0.5 + w, by)
-  ctx.quadraticCurveTo(cx + r * 0.25 + w, by - r * 0.3, cx + w,            by + r * 0.14)
-  ctx.quadraticCurveTo(cx - r * 0.25 + w, by + r * 0.38, cx - r * 0.5 + w, by)
-  ctx.quadraticCurveTo(cx - r * 0.75 + w, by - r * 0.24, cx - r + w,       by + r * 0.1)
-  ctx.lineTo(cx - r + w, cy - r * 0.08)
-  ctx.fill()
-
-  // X eyes
-  const ey = cy - r * 0.05, es = r * 0.18
-  ctx.strokeStyle = '#cc0000'; ctx.lineWidth = s * 0.065; ctx.lineCap = 'round'
-  for (const ex of [cx - r * 0.34 + w, cx + r * 0.34 + w]) {
-    ctx.beginPath(); ctx.moveTo(ex - es, ey - es); ctx.lineTo(ex + es, ey + es); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(ex + es, ey - es); ctx.lineTo(ex - es, ey + es); ctx.stroke()
-  }
-
-  // Grimace
-  ctx.strokeStyle = '#1a3600'; ctx.lineWidth = s * 0.055
-  ctx.beginPath(); ctx.arc(cx + w, ey + r * 0.5, r * 0.2, 0.2, Math.PI - 0.2); ctx.stroke()
-
-  // Sweat drop
-  ctx.fillStyle = 'rgba(140,200,255,0.75)'
-  ctx.beginPath(); ctx.arc(cx + r * 0.62 + w, ey - r * 0.38, r * 0.08, 0, Math.PI * 2); ctx.fill()
-}
-
-function overlay(ctx: CanvasRenderingContext2D, title: string, sub: string, sub2 = '') {
-  ctx.fillStyle = 'rgba(0,0,0,0.62)'
+function drawBg(ctx: CanvasRenderingContext2D, frame: number) {
+  ctx.fillStyle = '#06080f'
   ctx.fillRect(0, 0, W, H)
+  for (const st of STARS) {
+    const tw = 0.65 + 0.35 * Math.sin(frame * 0.025 + st.x * 0.3)
+    ctx.fillStyle = `rgba(240,240,210,${(st.a * tw).toFixed(2)})`
+    ctx.beginPath(); ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.strokeStyle = 'rgba(80,200,120,0.45)'
+  ctx.lineWidth = 1.5
+  ctx.beginPath(); ctx.moveTo(0, H - 22); ctx.lineTo(W, H - 22); ctx.stroke()
+}
+
+function drawAlien(ctx: CanvasRenderingContext2D, x: number, y: number, type: number, frame: number) {
+  const anim = (Math.floor(frame / 14) & 1)
+  const COLORS = ['#E69E93', '#c8b830', '#FFF1BD']
+  const col = COLORS[type]
+
+  if (type === 0) {
+    // Small crab – top rows (30 pts)
+    const s = 11
+    ctx.fillStyle = col
+    ctx.beginPath(); ctx.ellipse(x, y, s, s * 0.65, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#06080f'
+    ctx.beginPath(); ctx.arc(x - s * 0.38, y - s * 0.08, s * 0.25, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(x + s * 0.38, y - s * 0.08, s * 0.25, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = col; ctx.lineWidth = 1.6
+    const aShift = anim ? 0.25 : -0.25
+    ctx.beginPath(); ctx.moveTo(x - s * 0.35, y - s * 0.62); ctx.lineTo(x - s * 0.65, y - s * (1.05 + aShift)); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x + s * 0.35, y - s * 0.62); ctx.lineTo(x + s * 0.65, y - s * (1.05 + aShift)); ctx.stroke()
+    const lShift = anim ? 0.25 : 0
+    ctx.beginPath(); ctx.moveTo(x - s * 0.75, y + s * 0.15); ctx.lineTo(x - s * (1.1 + lShift), y + s * 0.7); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x + s * 0.75, y + s * 0.15); ctx.lineTo(x + s * (1.1 + lShift), y + s * 0.7); ctx.stroke()
+
+  } else if (type === 1) {
+    // Medium squid – mid rows (20 pts)
+    const s = 13
+    ctx.fillStyle = col
+    ctx.beginPath(); ctx.ellipse(x, y - 2, s, s * 0.58, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#06080f'
+    ctx.beginPath(); ctx.arc(x - s * 0.38, y - s * 0.28, s * 0.26, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(x + s * 0.38, y - s * 0.28, s * 0.26, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = col; ctx.lineWidth = 1.8
+    const tOffs = anim ? s * 0.18 : 0
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath()
+      ctx.moveTo(x + i * s * 0.38, y + s * 0.38)
+      ctx.lineTo(x + i * s * 0.38, y + s * 0.82 + (Math.abs(i) === 2 ? tOffs : 0))
+      ctx.stroke()
+    }
+    const armY = anim ? y + s * 0.12 : y - s * 0.12
+    ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.moveTo(x - s, y); ctx.lineTo(x - s * 1.3, armY); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x + s, y); ctx.lineTo(x + s * 1.3, armY); ctx.stroke()
+
+  } else {
+    // Large mushroom – bottom row (10 pts)
+    const s = 15
+    ctx.fillStyle = col
+    ctx.beginPath(); ctx.ellipse(x, y, s, s * 0.6, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#06080f'
+    ctx.beginPath(); ctx.arc(x - s * 0.38, y - s * 0.05, s * 0.28, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(x + s * 0.38, y - s * 0.05, s * 0.28, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = '#06080f'; ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.arc(x, y + s * 0.18, s * 0.28, 0.1, Math.PI - 0.1); ctx.stroke()
+    ctx.fillStyle = col
+    const knobX = anim ? s * 0.6 : s * 0.5
+    ctx.beginPath(); ctx.arc(x - knobX, y - s * 0.55, s * 0.2, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(x + knobX, y - s * 0.55, s * 0.2, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = col; ctx.lineWidth = 2
+    for (let i = -2; i <= 2; i++) {
+      const footY = y + s * (0.55 + (anim && Math.abs(i) > 1 ? 0.18 : 0))
+      ctx.beginPath(); ctx.moveTo(x + i * s * 0.36, y + s * 0.55); ctx.lineTo(x + i * s * 0.36, footY); ctx.stroke()
+    }
+  }
+}
+
+function drawPlayer(ctx: CanvasRenderingContext2D, x: number, blink: boolean, frame: number) {
+  if (blink && (frame & 7) < 4) return
+  const y = PLAYER_Y
+  const grd = ctx.createRadialGradient(x, y + PLAYER_H / 2, 0, x, y + PLAYER_H / 2, 22)
+  grd.addColorStop(0, 'rgba(80,200,120,0.55)'); grd.addColorStop(1, 'rgba(80,200,120,0)')
+  ctx.fillStyle = grd; ctx.fillRect(x - 22, y, 44, 22)
+  ctx.fillStyle = '#50C878'
+  ctx.beginPath()
+  ctx.moveTo(x, y - PLAYER_H / 2)
+  ctx.lineTo(x + PLAYER_W / 2, y + PLAYER_H / 2)
+  ctx.lineTo(x - PLAYER_W / 2, y + PLAYER_H / 2)
+  ctx.closePath(); ctx.fill()
+  ctx.fillStyle = '#FFF1BD'
+  ctx.beginPath(); ctx.arc(x, y + 4, PLAYER_W * 0.17, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = 'rgba(255,255,255,0.15)'
+  ctx.beginPath()
+  ctx.moveTo(x, y - PLAYER_H / 2)
+  ctx.lineTo(x + PLAYER_W * 0.24, y + PLAYER_H / 2)
+  ctx.lineTo(x, y + PLAYER_H * 0.12)
+  ctx.closePath(); ctx.fill()
+}
+
+function drawBullet(ctx: CanvasRenderingContext2D, b: Bullet) {
+  if (b.player) {
+    const g = ctx.createLinearGradient(b.x, b.y, b.x, b.y + 13)
+    g.addColorStop(0, '#afffaf'); g.addColorStop(1, 'rgba(80,200,120,0)')
+    ctx.fillStyle = g; ctx.fillRect(b.x - 2, b.y, 4, 13)
+  } else {
+    ctx.fillStyle = '#ff6040'; ctx.fillRect(b.x - 2, b.y, 4, 10)
+  }
+}
+
+function drawExplosion(ctx: CanvasRenderingContext2D, ex: Explosion) {
+  const p = 1 - ex.t / 20
+  const alpha = 1 - p
+  const r = 6 + p * 18
+  ctx.strokeStyle = `rgba(255,180,60,${alpha.toFixed(2)})`; ctx.lineWidth = 2
+  ctx.beginPath(); ctx.arc(ex.x, ex.y, r, 0, Math.PI * 2); ctx.stroke()
+  ctx.strokeStyle = `rgba(255,90,30,${(alpha * 0.55).toFixed(2)})`
+  ctx.beginPath(); ctx.arc(ex.x, ex.y, r * 0.55, 0, Math.PI * 2); ctx.stroke()
+  ctx.fillStyle = `rgba(255,220,80,${alpha.toFixed(2)})`
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + p * 1.8
+    ctx.beginPath(); ctx.arc(ex.x + Math.cos(a) * r * 1.1, ex.y + Math.sin(a) * r * 1.1, 2.2, 0, Math.PI * 2); ctx.fill()
+  }
+}
+
+function drawGuinness(ctx: CanvasRenderingContext2D, x: number, y: number, frame: number) {
+  const gy = y + Math.sin(frame * 0.08) * 2
+
+  // Glow
+  const grd = ctx.createRadialGradient(x, gy, 0, x, gy, 24)
+  grd.addColorStop(0, 'rgba(255,200,50,0.35)'); grd.addColorStop(1, 'rgba(255,200,50,0)')
+  ctx.fillStyle = grd; ctx.beginPath(); ctx.arc(x, gy, 24, 0, Math.PI * 2); ctx.fill()
+
+  // Beer body (dark Guinness colour)
+  ctx.fillStyle = '#1a0902'
+  ctx.beginPath()
+  ctx.moveTo(x - 7, gy - 9); ctx.lineTo(x + 7, gy - 9)
+  ctx.lineTo(x + 5.5, gy + 11); ctx.lineTo(x - 5.5, gy + 11)
+  ctx.closePath(); ctx.fill()
+
+  // Foam head
+  ctx.fillStyle = '#f0e8d8'
+  ctx.beginPath(); ctx.ellipse(x, gy - 10, 7.5, 3.8, 0, 0, Math.PI * 2); ctx.fill()
+
+  // Glass outline
+  ctx.strokeStyle = 'rgba(255,241,189,0.85)'; ctx.lineWidth = 1.2
+  ctx.beginPath()
+  ctx.moveTo(x - 7, gy - 9); ctx.lineTo(x + 7, gy - 9)
+  ctx.lineTo(x + 5.5, gy + 11); ctx.lineTo(x - 5.5, gy + 11)
+  ctx.closePath(); ctx.stroke()
+  ctx.beginPath(); ctx.ellipse(x, gy - 10, 7.5, 3.8, 0, 0, Math.PI * 2); ctx.stroke()
+
+  // Label stripe
+  ctx.fillStyle = 'rgba(255,241,189,0.18)'
+  ctx.fillRect(x - 4.5, gy - 3, 9, 5)
+}
+
+function drawOverlay(ctx: CanvasRenderingContext2D, title: string, sub: string, sub2 = '') {
+  ctx.fillStyle = 'rgba(6,8,15,0.72)'; ctx.fillRect(0, 0, W, H)
   ctx.textAlign = 'center'
   ctx.fillStyle = '#FFF1BD'
-  ctx.font = `bold ${CELL * 1.05}px 'Seaweed Script', cursive`
-  ctx.fillText(title, W / 2, H / 2 - CELL * 0.7)
-  ctx.font = `${CELL * 0.52}px Inter, sans-serif`
-  ctx.fillStyle = '#E69E93'
-  ctx.fillText(sub, W / 2, H / 2 + CELL * 0.3)
+  ctx.font = 'bold 28px Inter, sans-serif'; ctx.fillText(title, W / 2, H / 2 - 28)
+  ctx.font = '17px Inter, sans-serif'; ctx.fillStyle = '#E69E93'; ctx.fillText(sub, W / 2, H / 2 + 12)
   if (sub2) {
-    ctx.font = `${CELL * 0.42}px Inter, sans-serif`
-    ctx.fillStyle = 'rgba(255,241,189,0.55)'
-    ctx.fillText(sub2, W / 2, H / 2 + CELL * 1.0)
+    ctx.font = '13px Inter, sans-serif'; ctx.fillStyle = 'rgba(255,241,189,0.52)'
+    ctx.fillText(sub2, W / 2, H / 2 + 36)
   }
 }
 
@@ -340,142 +270,229 @@ const btnStyle: CSSProperties = {
 
 export default function PintChase() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const gs = useRef<GS>(initGame())
-  const raf = useRef(0)
+  const gs        = useRef<GS>(initGame())
+  const raf       = useRef(0)
   const [ui, setUi] = useState({ score: 0, lives: 3, status: 'idle' as Status, level: 1 })
 
-  const setDir = useCallback((dc: number, dr: number) => {
+  const tryShoot = useCallback(() => {
     const s = gs.current
-    if (s.status === 'idle') {
-      s.status = 'playing'
-      setUi(u => ({ ...u, status: 'playing' }))
-    }
     if (s.status !== 'playing') return
-    s.player.qc = dc
-    s.player.qr = dr
+    if (s.fireCooldown > 0 || s.bullets.some(b => b.player)) return
+    s.bullets.push({ x: s.playerX, y: PLAYER_Y - PLAYER_H / 2, player: true })
+    s.fireCooldown = 22
   }, [])
 
-  const restart = useCallback(() => {
-    const lvl = gs.current.status === 'won' ? gs.current.level + 1 : 1
+  const tryRestart = useCallback(() => {
+    const s = gs.current
+    const lvl = s.status === 'won' ? s.level + 1 : 1
     gs.current = initGame(lvl)
     gs.current.status = 'playing'
     setUi({ score: 0, lives: 3, status: 'playing', level: lvl })
   }, [])
 
+  const handleAction = useCallback(() => {
+    const st = gs.current.status
+    if (st === 'idle' || st === 'over' || st === 'won') tryRestart()
+    else tryShoot()
+  }, [tryRestart, tryShoot])
+
   useEffect(() => {
     const canvas = canvasRef.current!
-    const ctx = canvas.getContext('2d')!
+    const ctx    = canvas.getContext('2d')!
+    const keys   = new Set<string>()
 
     const onKey = (e: KeyboardEvent) => {
-      const wasd = ['KeyW','KeyA','KeyS','KeyD','w','a','s','d','ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ']
-      if (wasd.includes(e.code) || wasd.includes(e.key)) e.preventDefault()
-
-      const map: Record<string, [number, number]> = {
-        ArrowRight: [1,0], ArrowLeft: [-1,0], ArrowDown: [0,1], ArrowUp: [0,-1],
-        KeyD: [1,0], KeyA: [-1,0], KeyS: [0,1], KeyW: [0,-1],
-        d: [1,0], a: [-1,0], s: [0,1], w: [0,-1],
-        D: [1,0], A: [-1,0], S: [0,1], W: [0,-1],
-      }
-      const d = map[e.code] ?? map[e.key]
-      if (d) setDir(d[0], d[1])
-      if (e.key === 'Enter' || e.key === ' ') {
-        const st = gs.current.status
-        if (st === 'over' || st === 'won' || st === 'idle') restart()
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      const relevant = ['ArrowLeft','ArrowRight','KeyA','KeyD','a','d','A','D',' ','Enter']
+      if (relevant.includes(e.code) || relevant.includes(e.key)) e.preventDefault()
+      if (e.type === 'keydown') {
+        keys.add(e.code); keys.add(e.key)
+        if (e.key === ' ' || e.code === 'Space') {
+          const st = gs.current.status
+          if (st === 'idle' || st === 'over' || st === 'won') tryRestart()
+          else tryShoot()
+        }
+        if (e.key === 'Enter') {
+          const st = gs.current.status
+          if (st === 'idle' || st === 'over' || st === 'won') tryRestart()
+        }
+      } else {
+        keys.delete(e.code); keys.delete(e.key)
       }
     }
     window.addEventListener('keydown', onKey)
+    window.addEventListener('keyup',   onKey)
 
     function loop() {
       const s = gs.current
       s.frame++
-      const ctx2 = ctx
 
+      // ── Playing ──────────────────────────────────────────────────────────
       if (s.status === 'playing') {
-        // Player
-        const { e: pe, justArrived } = advance(s.player)
-        s.player = pe
-        if (justArrived) {
-          const pi = s.player.r * COLS + s.player.c
-          if (s.pints[pi]) {
-            s.pints[pi] = 0
-            s.score += 10
-            s.left--
-            if (s.left === 0) {
-              s.status = 'won'
-              setUi(u => ({ ...u, score: s.score, status: 'won' }))
-            } else {
+        const goL = keys.has('ArrowLeft')  || keys.has('a') || keys.has('A') || keys.has('KeyA') || s.inputL
+        const goR = keys.has('ArrowRight') || keys.has('d') || keys.has('D') || keys.has('KeyD') || s.inputR
+        if (goL) s.playerX = Math.max(PLAYER_W / 2, s.playerX - PLAYER_SPEED)
+        if (goR) s.playerX = Math.min(W - PLAYER_W / 2, s.playerX + PLAYER_SPEED)
+        if (s.fireCooldown > 0) s.fireCooldown--
+
+        for (const b of s.bullets) b.y += b.player ? -PLAYER_BULLET_SPD : ALIEN_BULLET_SPD
+        s.bullets = s.bullets.filter(b => b.y > -10 && b.y < H + 10)
+
+        // Fleet movement
+        s.moveTimer++
+        const alive = s.aliens.filter(a => a.alive)
+        const speedBoost = Math.max(0, Math.floor((ALIEN_COLS * ALIEN_ROWS - alive.length) / 6))
+        const interval   = Math.max(3, s.moveInterval - speedBoost * 2)
+        if (s.moveTimer >= interval) {
+          s.moveTimer = 0
+          if (alive.length > 0) {
+            const maxCol  = Math.max(...alive.map(a => a.col))
+            const minCol  = Math.min(...alive.map(a => a.col))
+            const rightX  = ALIEN_GRID_LEFT + s.offsetX + maxCol * ALIEN_SLOT_W + ALIEN_SLOT_W
+            const leftX   = ALIEN_GRID_LEFT + s.offsetX + minCol * ALIEN_SLOT_W
+            if      (s.dirX ===  1 && rightX + ALIEN_STEP_X > W - 8) { s.offsetY += ALIEN_STEP_DOWN; s.dirX = -1 }
+            else if (s.dirX === -1 && leftX  - ALIEN_STEP_X < 8)     { s.offsetY += ALIEN_STEP_DOWN; s.dirX =  1 }
+            else s.offsetX += s.dirX * ALIEN_STEP_X
+          }
+        }
+
+        // Alien shoots
+        s.fireTimer++
+        const fireInterval = Math.max(28, 88 - (s.level - 1) * 8)
+        if (s.fireTimer >= fireInterval && alive.length > 0) {
+          s.fireTimer = 0
+          const shooter = alive[Math.floor(Math.random() * alive.length)]
+          s.bullets.push({ x: alienCX(s, shooter.col), y: alienCY(s, shooter.row) + ALIEN_SLOT_H / 2, player: false })
+        }
+
+        // Player bullet hits alien
+        outer:
+        for (let bi = s.bullets.length - 1; bi >= 0; bi--) {
+          const b = s.bullets[bi]
+          if (!b.player) continue
+          for (const al of s.aliens) {
+            if (!al.alive) continue
+            const ax = alienCX(s, al.col), ay = alienCY(s, al.row)
+            if (Math.abs(b.x - ax) < ALIEN_SLOT_W * 0.5 && Math.abs(b.y - ay) < ALIEN_SLOT_H * 0.55) {
+              al.alive = false
+              s.explosions.push({ x: ax, y: ay, t: 20 })
+              s.bullets.splice(bi, 1)
+              const pts = al.type === 0 ? 30 : al.type === 1 ? 20 : 10
+              s.score += pts
               setUi(u => ({ ...u, score: s.score }))
+              continue outer
             }
           }
         }
 
-        // Ghosts
-        s.ghosts = s.ghosts.map(g => {
-          const smart = ghostAI(g, s.player)
-          return advance(smart).e
-        })
-
-        // Collision
-        const ppx = epx(s.player) + CELL / 2
-        const ppy = epy(s.player) + CELL / 2
-        for (const g of s.ghosts) {
-          const gpx = epx(g) + CELL / 2
-          const gpy = epy(g) + CELL / 2
-          if (Math.abs(ppx - gpx) < CELL * 0.65 && Math.abs(ppy - gpy) < CELL * 0.65) {
+        // Alien bullet hits player
+        for (let bi = s.bullets.length - 1; bi >= 0; bi--) {
+          const b = s.bullets[bi]
+          if (b.player) continue
+          if (Math.abs(b.x - s.playerX) < PLAYER_W * 0.5 && Math.abs(b.y - PLAYER_Y) < PLAYER_H * 0.55) {
+            s.bullets.splice(bi, 1)
             s.lives--
-            if (s.lives <= 0) {
-              s.status = 'over'
-              setUi(u => ({ ...u, lives: 0, status: 'over' }))
-            } else {
-              s.status = 'dying'
-              s.dT = 100
-              setUi(u => ({ ...u, lives: s.lives, status: 'dying' }))
-            }
+            s.explosions.push({ x: s.playerX, y: PLAYER_Y, t: 20 })
+            if (s.lives <= 0) { s.status = 'over';  setUi(u => ({ ...u, lives: 0, status: 'over' })) }
+            else              { s.status = 'dying'; s.dT = 80; setUi(u => ({ ...u, lives: s.lives, status: 'dying' })) }
             break
+          }
+        }
+
+        // Aliens reached bottom
+        for (const al of s.aliens) {
+          if (al.alive && alienCY(s, al.row) >= PLAYER_Y - PLAYER_H) {
+            s.status = 'over'; setUi(u => ({ ...u, status: 'over' })); break
+          }
+        }
+
+        if (s.aliens.every(a => !a.alive)) {
+          s.status = 'won'; setUi(u => ({ ...u, score: s.score, status: 'won' }))
+        }
+
+        s.explosions = s.explosions.map(ex => ({ ...ex, t: ex.t - 1 })).filter(ex => ex.t > 0)
+
+        // ── Guinness power-up ─────────────────────────────────────────────
+        // Spawn at random bottom position
+        if (s.powerup === null) {
+          s.powerupSpawn--
+          if (s.powerupSpawn <= 0) {
+            s.powerupSpawn = 360 + Math.floor(Math.random() * 420)
+            s.powerup = { x: 60 + Math.random() * (W - 120), y: PLAYER_Y - 22, timer: 300 }
+          }
+        }
+        // Countdown & despawn if not collected in time
+        if (s.powerup !== null) {
+          s.powerup.timer--
+          if (s.powerup.timer <= 0) s.powerup = null
+        }
+        // Player walks over it to collect
+        if (s.powerup !== null && Math.abs(s.playerX - s.powerup.x) < 30) {
+          s.explosions.push({ x: s.powerup.x, y: s.powerup.y, t: 20 })
+          s.powerup = null
+          s.powerupTimer = 300   // 5 seconds at 60 fps
+        }
+        // Auto rapid-fire while powered up
+        if (s.powerupTimer > 0) {
+          s.powerupTimer--
+          if (s.frame % 8 === 0) {
+            s.bullets.push({ x: s.playerX, y: PLAYER_Y - PLAYER_H / 2, player: true })
           }
         }
       }
 
+      // ── Dying ─────────────────────────────────────────────────────────────
       if (s.status === 'dying') {
         s.dT--
         if (s.dT <= 0) {
-          const gsp = s.ghosts[0].sp
-          s.player = mkEnt(1, 1, 1, 0, 0.085)
-          s.ghosts = [
-            mkEnt(9, 6,  1,  0, gsp),
-            mkEnt(9, 6, -1,  0, gsp),
-            mkEnt(9, 6,  0, -1, gsp),
-          ]
-          s.status = 'playing'
+          s.playerX = W / 2
+          s.bullets  = []
+          s.status   = 'playing'
           setUi(u => ({ ...u, status: 'playing' }))
         }
       }
 
-      // Render
-      ctx2.clearRect(0, 0, W, H)
-      drawBg(ctx2)
-      drawPints(ctx2, s.pints)
+      // ── Render ────────────────────────────────────────────────────────────
+      ctx.clearRect(0, 0, W, H)
+      drawBg(ctx, s.frame)
+      if (s.powerup !== null) drawGuinness(ctx, s.powerup.x, s.powerup.y, s.frame)
+      for (const al of s.aliens)     if (al.alive) drawAlien(ctx, alienCX(s, al.col), alienCY(s, al.row), al.type, s.frame)
+      for (const b  of s.bullets)    drawBullet(ctx, b)
+      for (const ex of s.explosions) drawExplosion(ctx, ex)
+      drawPlayer(ctx, s.playerX, s.status === 'dying', s.frame)
 
-      for (const g of s.ghosts) drawHungover(ctx2, g, s.frame)
-
-      // Sheep — blink while dying
-      if (s.status !== 'dying' || s.frame % 10 < 6) {
-        drawSheep(ctx2, s.player, s.frame)
+      // Power-up timer bar
+      if (s.powerupTimer > 0) {
+        const frac = s.powerupTimer / 300
+        const bw = 120
+        const bx = W / 2 - bw / 2
+        const by = H - 14
+        ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(bx - 1, by - 1, bw + 2, 8)
+        const barGrd = ctx.createLinearGradient(bx, 0, bx + bw, 0)
+        barGrd.addColorStop(0, '#c8901a'); barGrd.addColorStop(1, '#f5c842')
+        ctx.fillStyle = barGrd; ctx.fillRect(bx, by, bw * frac, 6)
+        ctx.font = '9px Inter, sans-serif'; ctx.fillStyle = '#FFF1BD'
+        ctx.textAlign = 'center'; ctx.fillText('🍺 RAPID FIRE', W / 2, by - 3)
       }
 
-      if (s.status === 'idle')  overlay(ctx2, 'Pint Chase', 'Arrow keys to start — eat the Guinness!', 'Watch out for the Hungover...')
-      if (s.status === 'over')  overlay(ctx2, 'Game Over', `Score: ${s.score}`, 'Press Enter or Space to try again')
-      if (s.status === 'won')   overlay(ctx2, 'All Pints Down!', `Score: ${s.score} — Next round?`, 'Press Enter or Space to continue')
+      if (s.status === 'idle')  drawOverlay(ctx, 'Space Invaders', 'Arrow keys to move  ·  Space to shoot', 'Defend the wedding from the alien invasion!')
+      if (s.status === 'over')  drawOverlay(ctx, 'Game Over', `Score: ${s.score}`, 'Press Space or Enter to try again')
+      if (s.status === 'won')   drawOverlay(ctx, 'Wave Cleared!', `Score: ${s.score} — Next wave incoming!`, 'Press Space or Enter to continue')
 
       raf.current = requestAnimationFrame(loop)
     }
 
     raf.current = requestAnimationFrame(loop)
-    return () => { cancelAnimationFrame(raf.current); window.removeEventListener('keydown', onKey) }
-  }, [setDir, restart])
+    return () => {
+      cancelAnimationFrame(raf.current)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('keyup',   onKey)
+    }
+  }, [tryShoot, tryRestart])
 
   return (
-    <section id="game" style={{ backgroundColor: '#0a1a10', padding: 'clamp(4rem,8vw,6rem) 1.5rem' }}>
+    <section id="game" style={{ backgroundColor: '#06080f', padding: 'clamp(4rem,8vw,6rem) 1.5rem' }}>
       <div style={{ maxWidth: 900, margin: '0 auto' }}>
 
         {/* Header */}
@@ -484,10 +501,10 @@ export default function PintChase() {
             Pre-wedding entertainment
           </p>
           <h2 style={{ fontFamily: 'var(--font-script)', color: '#FFF1BD', fontSize: 'clamp(2rem,4vw,3rem)', fontWeight: 400, margin: '0 0 0.5rem' }}>
-            Pint Chase
+            Space Invaders
           </h2>
           <p style={{ color: '#FFF1BD', opacity: 0.5, fontSize: '0.82rem', letterSpacing: '0.04em' }}>
-            Arrow keys or WASD to move &nbsp;·&nbsp; Eat the pints &nbsp;·&nbsp; Dodge the Hungover
+            Arrow keys to move &nbsp;·&nbsp; Space to shoot &nbsp;·&nbsp; Defend the wedding!
           </p>
         </div>
 
@@ -498,8 +515,9 @@ export default function PintChase() {
           color: '#FFF1BD', fontSize: '0.88rem', letterSpacing: '0.05em',
         }}>
           <span>Score: <strong style={{ color: '#E78D5A' }}>{ui.score}</strong></span>
-          <span>Level: <strong style={{ color: '#908A32' }}>{ui.level}</strong></span>
+          <span>Wave: <strong style={{ color: '#908A32' }}>{ui.level}</strong></span>
           <span>
+            Lives:&nbsp;
             {Array.from({ length: 3 }, (_, i) => (
               <span key={i} style={{ opacity: i < ui.lives ? 1 : 0.2, marginRight: 2, fontSize: '0.9rem' }}>♥</span>
             ))}
@@ -516,20 +534,31 @@ export default function PintChase() {
           />
         </div>
 
-        {/* Mobile D-pad */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.4rem', marginTop: '1.2rem' }}>
-          <button style={btnStyle} onClick={() => setDir(0, -1)}>▲</button>
-          <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <button style={btnStyle} onClick={() => setDir(-1, 0)}>◀</button>
-            <div style={{ width: 48 }} />
-            <button style={btnStyle} onClick={() => setDir(1, 0)}>▶</button>
-          </div>
-          <button style={btnStyle} onClick={() => setDir(0, 1)}>▼</button>
+        {/* Mobile controls */}
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.6rem', marginTop: '1.2rem' }}>
+          <button
+            style={btnStyle}
+            onPointerDown={() => { gs.current.inputL = true }}
+            onPointerUp={() => { gs.current.inputL = false }}
+            onPointerLeave={() => { gs.current.inputL = false }}
+            onPointerCancel={() => { gs.current.inputL = false }}
+          >◀</button>
+          <button
+            style={{ ...btnStyle, width: 72, background: 'rgba(80,200,120,0.18)', border: '1px solid rgba(80,200,120,0.4)' }}
+            onPointerDown={handleAction}
+          >🚀</button>
+          <button
+            style={btnStyle}
+            onPointerDown={() => { gs.current.inputR = true }}
+            onPointerUp={() => { gs.current.inputR = false }}
+            onPointerLeave={() => { gs.current.inputR = false }}
+            onPointerCancel={() => { gs.current.inputR = false }}
+          >▶</button>
         </div>
 
         <div style={{ textAlign: 'center', marginTop: '1rem' }}>
           <button
-            onClick={restart}
+            onClick={() => { gs.current = initGame(1); gs.current.status = 'playing'; setUi({ score: 0, lives: 3, status: 'playing', level: 1 }) }}
             style={{
               background: 'none', border: '1px solid rgba(255,241,189,0.3)',
               color: '#FFF1BD', opacity: 0.5, fontSize: '0.75rem',

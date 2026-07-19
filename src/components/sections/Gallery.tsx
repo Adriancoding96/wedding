@@ -1,13 +1,17 @@
-const GALLERY_COUNT = 8
-const REAL_PHOTOS = 7
+import { useLanguage } from '../../utils/LanguageContext'
+import { translations } from '../../utils/translations'
+
+const GALLERY_COUNT = 9
+const REAL_PHOTOS = 9
 
 export default function Gallery() {
+  const { lang } = useLanguage()
+  const t = translations[lang].gallery
   return (
     <section id="gallery" style={{ backgroundColor: '#1E4035', padding: 'clamp(4rem, 8vw, 7rem) 1.5rem' }}>
       <div style={{ maxWidth: 1100, margin: '0 auto' }}>
         <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
-          <p style={{ color: '#908A32', fontSize: '0.75rem', letterSpacing: '0.2em', textTransform: 'uppercase', marginBottom: '0.75rem' }}>Our Photos</p>
-          <h2 style={{ fontFamily: 'var(--font-script)', color: '#FFF1BD', fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 400, margin: 0 }}>Gallery</h2>
+          <h2 style={{ fontFamily: 'var(--font-script)', color: '#FFF1BD', fontSize: 'clamp(2rem, 4vw, 3rem)', fontWeight: 400, margin: 0 }}>{t.heading}</h2>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>

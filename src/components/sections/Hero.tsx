@@ -1,4 +1,6 @@
 import { useCountdown } from '../../utils/countdown'
+import { useLanguage } from '../../utils/LanguageContext'
+import { translations } from '../../utils/translations'
 
 function Pad({ n }: { n: number }) {
   return <>{String(n).padStart(2, '0')}</>
@@ -6,6 +8,8 @@ function Pad({ n }: { n: number }) {
 
 export default function Hero() {
   const { days, hours, minutes, seconds, isExpired } = useCountdown()
+  const { lang } = useLanguage()
+  const t = translations[lang].hero
 
   return (
     <section
@@ -39,17 +43,17 @@ export default function Hero() {
         </h1>
 
         <p style={{ color: '#FFF1BD', opacity: 0.85, fontSize: '1.05rem', letterSpacing: '0.25em', textTransform: 'uppercase', marginBottom: '0.5rem' }}>
-          19 &middot; June &middot; 2027
+          {t.date}
         </p>
 
         <p style={{ fontFamily: 'var(--font-serif)', color: '#FFF1BD', opacity: 0.7, fontSize: '1.1rem', fontStyle: 'italic', marginBottom: '3rem' }}>
-          Achill Island, County Mayo, Ireland
+          {t.location}
         </p>
 
         {/* Countdown */}
         {!isExpired ? (
           <div style={{ display: 'flex', gap: 'clamp(1rem, 4vw, 2.5rem)', justifyContent: 'center', flexWrap: 'wrap' }}>
-            {[{ value: days, label: 'Days' }, { value: hours, label: 'Hours' }, { value: minutes, label: 'Mins' }, { value: seconds, label: 'Secs' }].map(({ value, label }) => (
+            {[{ value: days, label: t.countdown.days }, { value: hours, label: t.countdown.hours }, { value: minutes, label: t.countdown.mins }, { value: seconds, label: t.countdown.secs }].map(({ value, label }) => (
               <div key={label} style={{ textAlign: 'center', minWidth: 56 }}>
                 <div style={{ fontFamily: 'var(--font-serif)', color: '#FFF1BD', fontSize: 'clamp(1.8rem, 5vw, 3rem)', fontWeight: 300, lineHeight: 1 }}>
                   <Pad n={value} />
@@ -62,7 +66,7 @@ export default function Hero() {
           </div>
         ) : (
           <p style={{ fontFamily: 'var(--font-serif)', color: '#FFF1BD', fontSize: '1.4rem', fontStyle: 'italic' }}>
-            Today's the day!
+            {t.todayMessage}
           </p>
         )}
 
